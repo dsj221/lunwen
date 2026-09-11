@@ -253,7 +253,7 @@
 
   // 线上代理地址：部署到 Render 后填入实际 URL（如 https://lunwen.onrender.com）
   // 也可用 URL hash 临时指定：访问 #proxy=https://xxx.onrender.com
-  const REMOTE_PROXY = "";
+  const REMOTE_PROXY = "https://lunwen-22lz.onrender.com";
   let PROXY_BASE = "";
 
   async function detectServer() {
