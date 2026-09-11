@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import urllib.error
 import urllib.parse
@@ -16,7 +17,10 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-PORT = 8765
+# Render 等托管平台会注入 PORT 环境变量；本地默认 8765
+PORT = int(os.environ.get("PORT", "8765"))
+# 线上必须绑定 0.0.0.0 才能被反向代理访问；本地仅监听 127.0.0.1
+HOST = "0.0.0.0" if os.environ.get("PORT") else "127.0.0.1"
 UA = "lit-intent-search/1.0 (local prototype)"
 
 
