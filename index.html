@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>文献意图检索 · 研究想法 → 论文与出处</title>
+  <meta name="description" content="按研究想法自动展开检索，融合 arXiv / Semantic Scholar / Crossref，个人画像加权，今日推送与公众号筛选，摘要强制附出处。" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="brand">
+        <div class="brand-mark">LI</div>
+        <div class="brand-text">
+          <div class="brand-title">文献意图检索</div>
+          <div class="brand-sub" id="mode-hint">初始化…</div>
+        </div>
+      </div>
+      <nav class="nav">
+        <button type="button" class="active" data-panel="panel-search">检索</button>
+        <button type="button" data-panel="panel-digest">今日推送</button>
+        <button type="button" data-panel="panel-wx">公众号筛选</button>
+        <button type="button" data-panel="panel-profile">个人画像</button>
+        <button type="button" data-panel="panel-saved">收藏</button>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <!-- 检索 -->
+    <section id="panel-search" class="panel active">
+      <div class="hero">
+        <h1>用想法检索，而不是关键词</h1>
+        <p>写清方法、场景和问题。系统会拆成多路学术 query，检索 arXiv / Semantic Scholar / Crossref，并给出可核验的出处。</p>
+      </div>
+
+      <div class="search-card">
+        <div class="search-row">
+          <textarea id="q-input" placeholder="例如：我想做扩散模型在小样本病理图上的应用，有没有失败案例或综述"></textarea>
+          <div class="search-actions">
+            <button type="button" class="btn btn-primary" id="btn-search">意图检索</button>
+            <button type="button" class="btn btn-ghost" id="btn-example">填入示例</button>
+            <button type="button" class="btn btn-ghost" id="btn-clear">清空</button>
+          </div>
+        </div>
+        <div class="meta-row">
+          <span class="chip">Ctrl/⌘ + Enter 检索</span>
+          <span class="chip muted">摘要为原文抽取 · 附 DOI / arXiv 链接</span>
+        </div>
+
+        <div class="intent-panel" id="intent-panel">
+          <h3>意图展开</h3>
+          <div class="meta-row" id="intent-chips"></div>
+          <div class="query-list" id="query-list" style="margin-top:10px"></div>
+        </div>
+
+        <div class="status-bar" id="search-status"></div>
+      </div>
+
+      <div class="result-list" id="result-list"></div>
+    </section>
+
+    <!-- 今日推送 -->
+    <section id="panel-digest" class="panel">
+      <div class="digest-hero">
+        <div>
+          <h2 style="margin:0;font-size:22px;letter-spacing:-0.02em">今日推送</h2>
+          <div class="digest-date" id="digest-date"></div>
+          <p class="desc" style="margin-top:6px">按你的研究画像筛选后的 3–5 条，每条含摘要与出处；并给一条可执行 idea。</p>
+        </div>
+        <button type="button" class="btn btn-primary" id="btn-digest">生成今日精选</button>
+      </div>
+      <div class="status-bar" id="digest-status"></div>
+      <div class="idea-box" id="idea-box"></div>
+      <div class="result-list" id="digest-list"></div>
+    </section>
+
+    <!-- 公众号筛选 -->
+    <section id="panel-wx" class="panel">
+      <div class="card" style="margin-bottom:14px">
+        <h2>公众号推文筛选库</h2>
+        <p class="desc">微信对外抓取限制严格。这里采用「你贴链接 + 标注标签/关联」的合规方式：推送时按标签过滤，引用必带原文出处。不自动爬取未授权内容。</p>
+        <div class="wx-form">
+          <div class="row">
+            <input type="url" id="wx-url" placeholder="https://mp.weixin.qq.com/s/..." />
+            <input type="text" id="wx-title" placeholder="文章标题" />
+          </div>
+          <div class="row">
+            <input type="text" id="wx-account" placeholder="公众号名称" />
+            <input type="text" id="wx-tags" placeholder="标签（逗号分隔）：扩散模型, 医学影像" />
+          </div>
+          <div class="row">
+            <input type="text" id="wx-note" placeholder="与你课题的关联 / 筛选理由（会写进日推）" />
+            <button type="button" class="btn btn-primary" id="btn-add-wx">加入筛选库</button>
+          </div>
+          <div class="row">
+            <input type="text" id="wx-filter" placeholder="按标签或标题过滤…" style="flex:1" />
+          </div>
+        </div>
+      </div>
+      <div class="wx-list" id="wx-list"></div>
+    </section>
+
+    <!-- 个人画像 -->
+    <section id="panel-profile" class="panel">
+      <div class="card">
+        <h2>个人画像</h2>
+        <p class="desc">注册即完善研究方向。画像会参与意图展开与结果加权，并驱动「今日推送」。</p>
+        <div class="profile-grid">
+          <label class="field">
+            研究方向
+            <input type="text" id="pf-direction" placeholder="例如：医学影像 / 扩散生成模型" />
+          </label>
+          <label class="field">
+            关键词（逗号分隔）
+            <input type="text" id="pf-keywords" placeholder="扩散模型, 小样本, 病理图像, segmentation" />
+            <span class="hint">中英文皆可；英文术语对学术库命中更稳。</span>
+          </label>
+          <label class="field" style="display:flex;align-items:center;gap:8px;font-weight:600">
+            <input type="checkbox" id="pf-boost" checked style="width:auto" />
+            检索时按画像加权排序
+          </label>
+          <div>
+            <button type="button" class="btn btn-primary" id="btn-save-profile">保存画像</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 收藏 -->
+    <section id="panel-saved" class="panel">
+      <div class="card" style="margin-bottom:12px">
+        <h2>我的收藏</h2>
+        <p class="desc">收藏会连同摘要与出处链接保存在本机（localStorage），便于综述引用。</p>
+      </div>
+      <div class="result-list" id="saved-list"></div>
+    </section>
+
+    <p class="footer-note">
+      数据来源：arXiv · Semantic Scholar · Crossref（公开 API）。总结为基于原文摘要的抽取，打开链接可核验。<br />
+      公众号内容仅作个人筛选与引用，不进行未授权批量抓取。
+    </p>
+  </main>
+
+  <div class="toast" id="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>
