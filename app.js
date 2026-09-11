@@ -251,11 +251,15 @@
     }
   }
 
+  // 线上代理地址：部署到 Render 后填入实际 URL（如 https://lunwen.onrender.com）
+  // 也可用 URL hash 临时指定：访问 #proxy=https://xxx.onrender.com
+  const REMOTE_PROXY = "";
   let PROXY_BASE = "";
 
   async function detectServer() {
     if (state.serverMode !== null) return state.serverMode;
-    const candidates = ["", "http://127.0.0.1:8765"];
+    const hashProxy = new URLSearchParams(location.hash.replace(/^#/, "")).get("proxy") || "";
+    const candidates = ["", "http://127.0.0.1:8765", REMOTE_PROXY, hashProxy].filter(Boolean);
     for (const base of candidates) {
       try {
         const r = await fetch(base + "/api/health", { signal: AbortSignal.timeout(1500) });

@@ -113,8 +113,8 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 def main() -> None:
-    httpd = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    print(f"文献意图检索: http://127.0.0.1:{PORT}")
+    httpd = ThreadingHTTPServer((HOST, PORT), Handler)
+    print(f"文献意图检索: http://{HOST}:{PORT}")
     print(f"静态目录: {ROOT}")
     print("Ctrl+C 退出")
     try:
