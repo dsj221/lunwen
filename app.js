@@ -257,12 +257,12 @@
   let PROXY_BASE = "";
 
   async function detectServer() {
-    if (state.serverMode !== null) return state.serverMode;
+    if (state.serverMode === true) return true;
     const hashProxy = new URLSearchParams(location.hash.replace(/^#/, "")).get("proxy") || "";
-    const candidates = ["", "http://127.0.0.1:8765", REMOTE_PROXY, hashProxy].filter(Boolean);
+    const candidates = ["http://127.0.0.1:8765", REMOTE_PROXY, hashProxy].filter(Boolean);
     for (const base of candidates) {
       try {
-        const r = await fetch(base + "/api/health", { signal: AbortSignal.timeout(1500) });
+        const r = await fetch(base + "/api/health", { signal: AbortSignal.timeout(3000) });
         if (r.ok) {
           state.serverMode = true;
           PROXY_BASE = base;
@@ -272,21 +272,37 @@
         /* try next */
       }
     }
-    state.serverMode = false;
+    // 失败不缓存：Render 免费实例可能正在冷启动，下次重试
     return false;
+  }
+
+  async function withProxyFallback(directFetch, proxyPath, query, limit, parse) {
+    // 直连失败（CORS/限流）→ 直接尝试代理列表（60 秒超时覆盖 Render 冷启动约 50 秒）
+    try {
+      return await directFetch();
+    } catch (e) {
+      const proxies = ["http://127.0.0.1:8765", REMOTE_PROXY].filter(Boolean);
+      for (const base of proxies) {
+        try {
+          const data = await directFetch(base + proxyPath, 60000);
+          PROXY_BASE = base;
+          state.serverMode = true;
+          return data;
+        } catch { /* try next */ }
+      }
+      throw e;
+    }
   }
 
   async function searchArxiv(query, limit = 5) {
     const q = encodeURIComponent(`all:${query}`);
-    const url = `https://export.arxiv.org/api/query?search_query=${q}&start=0&max_results=${limit}&sortBy=relevance&sortOrder=descending`;
-    let xml;
-    try {
-      xml = await fetchText(url);
-    } catch (e) {
-      const server = await detectServer();
-      if (!server) throw e;
-      xml = await fetchText(`${PROXY_BASE}/api/arxiv?q=${encodeURIComponent(query)}&limit=${limit}`);
-    }
+    const directUrl = `https://export.arxiv.org/api/query?search_query=${q}&start=0&max_results=${limit}&sortBy=relevance&sortOrder=descending`;
+    const xml = await withProxyFallback(
+      (proxyBase, timeout) => fetchText(proxyBase || directUrl, timeout ?? 12000),
+      `/api/arxiv?q=${encodeURIComponent(query)}&limit=${limit}`,
+      query,
+      limit
+    );
     return parseArxiv(xml);
   }
 
@@ -325,18 +341,16 @@
   }
 
   async function searchS2(query, limit = 5) {
-    const url =
+    const directUrl =
       "https://api.semanticscholar.org/graph/v1/paper/search?query=" +
       encodeURIComponent(query) +
       `&limit=${limit}&fields=title,abstract,year,url,externalIds,citationCount,authors,venue`;
-    let data;
-    try {
-      data = await fetchJson(url);
-    } catch (e) {
-      const server = await detectServer();
-      if (!server) throw e;
-      data = await fetchJson(`${PROXY_BASE}/api/s2?q=${encodeURIComponent(query)}&limit=${limit}`);
-    }
+    const data = await withProxyFallback(
+      (proxyBase, timeout) => fetchJson(proxyBase || directUrl, timeout ?? 20000),
+      `/api/s2?q=${encodeURIComponent(query)}&limit=${limit}`,
+      query,
+      limit
+    );
     return (data.data || []).map((p) => ({
       id: p.paperId || p.externalIds?.DOI || p.url,
       source: "s2",
@@ -530,6 +544,10 @@
 
     setStatus("正在多路检索 arXiv / Semantic Scholar / Crossref…");
     setSearchBusy(true);
+    // 5 秒后提示冷启动（Render 免费实例闲置后会休眠）
+    const slowTimer = setTimeout(() => {
+      setStatus("代理冷启动中（Render 免费实例约 50 秒），请稍候…");
+    }, 5000);
 
     const jobs = queries.map(async (q) => {
       try {
@@ -556,6 +574,7 @@
     );
 
     const batches = await Promise.all(jobs);
+    clearTimeout(slowTimer);
     let merged = batches.flat();
     merged = dedupe(merged);
     merged = merged.map((item) => {
