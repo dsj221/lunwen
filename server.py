@@ -112,6 +112,43 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send(502, json.dumps({"error": str(e)}).encode())
             return
 
+        if path == "/api/translate":
+            text = (qs.get("text") or [""])[0].strip()
+            if not text:
+                self._send(400, json.dumps({"error": "text required"}).encode())
+                return
+            # 限制长度，避免上游拒绝
+            if len(text) > 1500:
+                text = text[:1500]
+            url = (
+                "https://translate.googleapis.com/translate_a/single?"
+                + urllib.parse.urlencode(
+                    {
+                        "client": "dict-chrome-ex",
+                        "sl": "en",
+                        "tl": "zh-CN",
+                        "dt": "t",
+                        "q": text,
+                    }
+                )
+            )
+            try:
+                raw = _http_get(url, timeout=20)
+                data = json.loads(raw.decode("utf-8"))
+                zh = ""
+                if isinstance(data, list) and data and isinstance(data[0], list):
+                    parts = []
+                    for seg in data[0]:
+                        if isinstance(seg, list) and seg and isinstance(seg[0], str):
+                            parts.append(seg[0])
+                    zh = "".join(parts)
+                self._send(200, json.dumps({"zh": zh}, ensure_ascii=False).encode())
+            except urllib.error.HTTPError as e:
+                self._send(e.code, json.dumps({"error": f"translate HTTP {e.code}"}).encode())
+            except Exception as e:  # noqa: BLE001
+                self._send(502, json.dumps({"error": str(e)}).encode())
+            return
+
         # 静态文件
         return super().do_GET()
 

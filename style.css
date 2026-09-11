@@ -290,3 +290,38 @@ label.field input:focus, label.field textarea:focus {
 .saved-badge {
   font-size: 11px; color: var(--wx); font-weight: 650;
 }
+
+.title-zh {
+  margin: -2px 0 8px;
+  font-size: 14px;
+  color: var(--ink-2);
+  font-weight: 500;
+}
+
+.kw-row {
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+  margin: 0 0 10px;
+}
+.kw-label {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+.kw-row .chip {
+  background: #fff7ed; color: #9a3412; border-color: #fed7aa;
+  font-size: 12px;
+}
+
+.result-abs.zh {
+  color: var(--ink);
+  font-size: 13.5px;
+  -webkit-line-clamp: 4;
+}
+.result-abs.en {
+  margin-top: 6px; color: var(--ink-2); font-size: 12.5px;
+  border-top: 1px dashed var(--line); padding-top: 8px;
+}
+.hidden-abs { display: none !important; }
+.result-abs.en.open {
+  display: block;
+  -webkit-line-clamp: unset;
+}

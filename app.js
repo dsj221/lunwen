@@ -508,6 +508,243 @@
     return out;
   }
 
+  // ---------- 中文关键词 / 中文摘要 ----------
+  // 学术高频英→中（按长词优先匹配，用于关键词离线翻译）
+  const ACADEMIC_CN = [
+    ["denoising diffusion probabilistic models", "去噪扩散概率模型"],
+    ["denoising diffusion", "去噪扩散"],
+    ["diffusion models", "扩散模型"],
+    ["diffusion model", "扩散模型"],
+    ["score-based generative", "基于分数的生成"],
+    ["few-shot learning", "小样本学习"],
+    ["few-shot", "小样本"],
+    ["one-shot", "单样本"],
+    ["zero-shot", "零样本"],
+    ["meta-learning", "元学习"],
+    ["medical image segmentation", "医学图像分割"],
+    ["medical image", "医学图像"],
+    ["medical imaging", "医学影像"],
+    ["biomedical image", "生物医学图像"],
+    ["histopathology", "组织病理学"],
+    ["pathology", "病理学"],
+    ["semantic segmentation", "语义分割"],
+    ["instance segmentation", "实例分割"],
+    ["image segmentation", "图像分割"],
+    ["segmentation", "分割"],
+    ["object detection", "目标检测"],
+    ["large language models", "大语言模型"],
+    ["large language model", "大语言模型"],
+    ["foundation model", "基础模型"],
+    ["retrieval-augmented generation", "检索增强生成"],
+    ["retrieval augmented", "检索增强"],
+    ["graph neural network", "图神经网络"],
+    ["self-attention", "自注意力"],
+    ["attention mechanism", "注意力机制"],
+    ["transformer", "Transformer"],
+    ["vision-language", "视觉语言"],
+    ["vision language", "视觉语言"],
+    ["contrastive learning", "对比学习"],
+    ["self-supervised learning", "自监督学习"],
+    ["self-supervised", "自监督"],
+    ["semi-supervised", "半监督"],
+    ["transfer learning", "迁移学习"],
+    ["domain adaptation", "领域自适应"],
+    ["domain generalization", "领域泛化"],
+    ["federated learning", "联邦学习"],
+    ["knowledge distillation", "知识蒸馏"],
+    ["reinforcement learning", "强化学习"],
+    ["adversarial robustness", "对抗鲁棒性"],
+    ["adversarial attack", "对抗攻击"],
+    ["generative adversarial", "生成对抗"],
+    ["anomaly detection", "异常检测"],
+    ["time series", "时间序列"],
+    ["point cloud", "点云"],
+    ["multimodal", "多模态"],
+    ["cross-modal", "跨模态"],
+    ["question answering", "问答"],
+    ["named entity recognition", "命名实体识别"],
+    ["machine translation", "机器翻译"],
+    ["sentiment analysis", "情感分析"],
+    ["recommender system", "推荐系统"],
+    ["recommendation system", "推荐系统"],
+    ["autonomous driving", "自动驾驶"],
+    ["robot learning", "机器人学习"],
+    ["drug discovery", "药物发现"],
+    ["protein structure", "蛋白质结构"],
+    ["differential privacy", "差分隐私"],
+    ["explainable", "可解释"],
+    ["interpretable", "可解释"],
+    ["benchmark", "基准测试"],
+    ["dataset", "数据集"],
+    ["survey", "综述"],
+    ["limitation", "局限"],
+    ["failure", "失败"],
+    ["generalization", "泛化"],
+    ["representation learning", "表示学习"],
+    ["feature extraction", "特征提取"],
+    ["deep learning", "深度学习"],
+    ["neural network", "神经网络"],
+    ["convolutional neural network", "卷积神经网络"],
+    ["clinical", "临床"],
+    ["healthcare", "医疗健康"],
+    ["radiology", "放射影像"],
+    ["classification", "分类"],
+    ["detection", "检测"],
+    ["generation", "生成"],
+    ["robustness", "鲁棒性"],
+    ["privacy", "隐私"],
+    ["security", "安全"],
+  ];
+
+  const transCache = store.get("ls_trans_cache", {});
+  const kwCache = store.get("ls_kw_cache", {});
+
+  function saveTransCache() {
+    // 控制体积：只保留最近 200 条
+    const keys = Object.keys(transCache);
+    if (keys.length > 200) {
+      keys.sort((a, b) => (transCache[b].t || 0) - (transCache[a].t || 0));
+      for (const k of keys.slice(200)) delete transCache[k];
+    }
+    store.set("ls_trans_cache", transCache);
+  }
+
+  /** 从标题/摘要抽取中文学术关键词（词典优先，离线可用） */
+  function extractZhKeywords(item) {
+    const cacheKey = item.id;
+    if (kwCache[cacheKey]) return kwCache[cacheKey];
+
+    const text = `${item.title || ""} ${item.abstract || ""}`.toLowerCase();
+    const found = [];
+    const seen = new Set();
+    for (const [en, cn] of ACADEMIC_CN) {
+      if (text.includes(en) && !seen.has(cn)) {
+        seen.add(cn);
+        found.push(cn);
+      }
+      if (found.length >= 6) break;
+    }
+
+    // 补充：标题中未命中词典的英文术语（保留原词，便于精确检索）
+    if (found.length < 3) {
+      const words = (item.title || "").match(/[A-Za-z][A-Za-z0-9\-+]{3,}/g) || [];
+      for (const w of words) {
+        const lw = w.toLowerCase();
+        if (["with", "from", "using", "via", "towards", "toward", "based", "model", "models", "learning", "analysis"].includes(lw))
+          continue;
+        if (!seen.has(w) && found.length < 5) {
+          seen.add(w);
+          found.push(w);
+        }
+      }
+    }
+
+    const out = found.slice(0, 6);
+    kwCache[cacheKey] = out;
+    store.set("ls_kw_cache", kwCache);
+    return out;
+  }
+
+  function parseGoogleTranslatePayload(json) {
+    try {
+      const data = typeof json === "string" ? JSON.parse(json) : json;
+      if (!Array.isArray(data) || !Array.isArray(data[0])) return "";
+      return data[0]
+        .map((seg) => (Array.isArray(seg) ? seg[0] : ""))
+        .filter(Boolean)
+        .join("");
+    } catch {
+      return "";
+    }
+  }
+
+  /** 英→中；优先本地代理，其次直连；失败返回空串 */
+  async function translateEnZh(text, timeout = 18000) {
+    const clean = String(text || "").replace(/\s+/g, " ").trim();
+    if (!clean) return "";
+    // 只译前 ~1200 字符，避免过长
+    const src = clean.length > 1200 ? clean.slice(0, 1200) + "…" : clean;
+    const key = src.slice(0, 180);
+    if (transCache[key]?.zh) return transCache[key].zh;
+
+    const enc = encodeURIComponent(src);
+    const urls = [];
+    if (PROXY_BASE || state.serverMode) {
+      urls.push(`${PROXY_BASE}/api/translate?text=${enc}`);
+    }
+    urls.push(
+      `https://translate.googleapis.com/translate_a/single?client=dict-chrome-ex&sl=en&tl=zh-CN&dt=t&q=${enc}`
+    );
+
+    for (const url of urls) {
+      try {
+        const raw = await fetchText(url, timeout);
+        let zh = "";
+        try {
+          const data = JSON.parse(raw);
+          if (data && data.zh) zh = data.zh;
+          else zh = parseGoogleTranslatePayload(data);
+        } catch {
+          zh = "";
+        }
+        if (zh && /[\u4e00-\u9fff]/.test(zh)) {
+          transCache[key] = { zh, t: Date.now() };
+          saveTransCache();
+          return zh;
+        }
+      } catch {
+        /* next */
+      }
+    }
+    return "";
+  }
+
+  /** 词典兜底的中文「结构化摘要」 */
+  function offlineZhSummary(item) {
+    const kws = item.zh_keywords || extractZhKeywords(item);
+    if (!item.abstract && !item.title) return "（无摘要，请打开原文核验）";
+    if (!kws.length) return "（中文摘要暂不可用，可展开英文原文摘要）";
+    const method = kws[0];
+    const scene = kws.find((k) => k !== method) || "相关任务";
+    return `本文围绕「${method}」展开，涉及「${scene}」。完整结论请打开原文核验（英文摘要已附）。`;
+  }
+
+  /** 批量为结果补充中文关键词与中文摘要（限流 2 并发） */
+  async function enrichWithChinese(items, { onProgress } = {}) {
+    await detectServer(); // 确保 PROXY_BASE 可用
+    const queue = items.slice();
+    let done = 0;
+    const workers = Array.from({ length: 2 }, async () => {
+      while (queue.length) {
+        const item = queue.shift();
+        if (!item) break;
+        item.zh_keywords = extractZhKeywords(item);
+
+        const absEn = extractiveSummary(item.abstract, 400);
+        let zh = "";
+        if (item.abstract) {
+          zh = await translateEnZh(absEn);
+        }
+        if (!zh) {
+          // 尝试只译标题，至少给标题中文
+          const titleZh = await translateEnZh(item.title || "");
+          item.title_zh = titleZh || "";
+          item.zh_summary = offlineZhSummary(item);
+        } else {
+          item.zh_summary = zh;
+          const titleZh = await translateEnZh(item.title || "");
+          item.title_zh = titleZh || "";
+        }
+        done += 1;
+        if (onProgress) onProgress(done, items.length, item);
+        // 轻微间隔，降低限流概率
+        await new Promise((r) => setTimeout(r, 180));
+      }
+    });
+    await Promise.all(workers);
+    return items;
+  }
+
   function ideaFrom(parsed, items) {
     const top = items[0];
     const topics = parsed.topics.length ? parsed.topics : parsed.en_terms;
@@ -585,16 +822,37 @@
 
     const limit = 12;
     state.lastResults = merged.slice(0, limit);
+    // 先渲染英文结果，再异步补中文
+    state.lastResults.forEach((it) => {
+      it.zh_keywords = extractZhKeywords(it);
+    });
     renderResults(state.lastResults, parsed);
     setSearchBusy(false);
 
     if (!state.lastResults.length) {
       setStatus("各源均未返回结果。可换更具体的英文术语，或稍后重试（S2 可能限流）。", "error");
-    } else {
-      const sources = [...new Set(state.lastResults.map((r) => r.source.toUpperCase()))].join(" · ");
-      setStatus(`完成：${state.lastResults.length} 条（${sources}）。摘要为原文抽取，出处可点开核验。`, "ok");
-      if (!silent) toast(`检索到 ${state.lastResults.length} 条相关文献`);
+      return;
     }
+
+    const sources = [...new Set(state.lastResults.map((r) => r.source.toUpperCase()))].join(" · ");
+    setStatus(
+      `完成：${state.lastResults.length} 条（${sources}）。正在生成中文关键词/摘要…`,
+      "ok"
+    );
+    if (!silent) toast(`检索到 ${state.lastResults.length} 条，正在译中文…`);
+
+    await enrichWithChinese(state.lastResults, {
+      onProgress: (done, total) => {
+        setStatus(`完成：${total} 条（${sources}）。中文摘要 ${done}/${total}…`, "ok");
+        renderResults(state.lastResults, parsed);
+      },
+    });
+    renderResults(state.lastResults, parsed);
+    setStatus(
+      `完成：${state.lastResults.length} 条（${sources}）。已附中文关键词与中文摘要；出处可点开核验。`,
+      "ok"
+    );
+    if (!silent) toast("中文关键词与摘要已就绪");
   }
 
   async function runDailyDigest() {
@@ -672,22 +930,29 @@
       .join(" · ");
     const idHref = escapeHtml(item.url || "#");
     const saved = state.saved.some((s) => s.id === item.id);
+    const zhKws = (item.zh_keywords || []).map((k) => `<span class="chip">${escapeHtml(k)}</span>`).join(" ");
+    const zhAbs = item.zh_summary || "（中文摘要生成中…）";
+    const enAbs = item.summary || item.abstract || "无英文摘要";
+    const titleZh = item.title_zh ? `<div class="title-zh">${escapeHtml(item.title_zh)}</div>` : "";
     return `
     <article class="result" data-id="${escapeHtml(item.id)}">
       <div class="result-top">
         <h3 class="result-title"><a href="${idHref}" target="_blank" rel="noopener">${escapeHtml(item.title)}</a></h3>
       </div>
+      ${titleZh}
       <div class="result-meta">
         <span class="chip ${item.source === "arxiv" ? "arxiv" : item.source === "s2" ? "s2" : "muted"}">${item.source.toUpperCase()}</span>
         <span>${escapeHtml(citeLine)}</span>
         <span class="score">score ${item.score?.toFixed?.(1) ?? "—"}</span>
         ${saved ? '<span class="saved-badge">已收藏</span>' : ""}
       </div>
-      <p class="result-abs">${escapeHtml(item.summary || item.abstract || "无摘要")}</p>
+      ${zhKws ? `<div class="kw-row"><span class="kw-label">关键词</span>${zhKws}</div>` : ""}
+      <p class="result-abs zh">${escapeHtml(zhAbs)}</p>
+      <p class="result-abs en hidden-abs">${escapeHtml(enAbs)}</p>
       <div class="result-foot">
         <span class="reason">${escapeHtml(item.reason || "")}</span>
         <div class="result-actions">
-          <button class="linkish" data-act="toggle-abs">展开摘要</button>
+          <button class="linkish" data-act="toggle-abs">看英文原文摘要</button>
           <button class="linkish" data-act="save">${saved ? "取消收藏" : "收藏"}</button>
           ${doi ? `<a class="linkish" href="https://doi.org/${escapeHtml(doi)}" target="_blank" rel="noopener">DOI</a>` : ""}
           <a class="linkish" href="${idHref}" target="_blank" rel="noopener">原文</a>
@@ -872,9 +1137,16 @@
       if (!card) return;
 
       if (act === "toggle-abs") {
-        const abs = card.querySelector(".result-abs");
-        abs.classList.toggle("open");
-        t.textContent = abs.classList.contains("open") ? "收起摘要" : "展开摘要";
+        const zh = card.querySelector(".result-abs.zh");
+        const en = card.querySelector(".result-abs.en");
+        if (en && zh) {
+          en.classList.toggle("open");
+          en.classList.toggle("hidden-abs");
+          t.textContent = en.classList.contains("hidden-abs") ? "看英文原文摘要" : "收起英文摘要";
+        } else {
+          const abs = card.querySelector(".result-abs");
+          abs?.classList.toggle("open");
+        }
       }
       if (act === "save") {
         const id = card.dataset.id;
